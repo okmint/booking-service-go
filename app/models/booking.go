@@ -100,11 +100,11 @@ func (b *Booking) Confirm() error {
 // Допустимые переходы:
 //   - AwaitsConfirmation
 //   - Confirmed (только если StartDate > today)
-func (b *Booking) InitiateCancellation(today time.Time) error {
+func (b *Booking) InitiateCancellation(now time.Time) error {
 	switch b.status {
 	case BookingStatusAwaitsConfirmation:
 	case BookingStatusConfirmed:
-		if !b.startDate.After(today) {
+		if !b.startDate.After(now) {
 			return ErrCannotCancelPastBooking
 		}
 	default:
@@ -113,7 +113,7 @@ func (b *Booking) InitiateCancellation(today time.Time) error {
 	prev := b.status
 	b.previousStatus = &prev
 
-	sentAt := today
+	sentAt := now
 	b.cancelCommandSentAt = &sentAt
 
 	b.status = BookingStatusCancellationPending

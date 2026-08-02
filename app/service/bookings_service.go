@@ -129,7 +129,7 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID st
 			s.logger.Info("завершение отмены проигнорировано", zap.Int64("id", id))
 			return nil
 		}
-		return err
+		return fmt.Errorf("завершение отмены бронирования %d: %w", id, err)
 	}
 
 	if err := s.repo.Update(ctx, booking); err != nil {
@@ -160,10 +160,13 @@ func (s *BookingsService) HandleCancelError(ctx context.Context, requestID strin
 
 	if err := booking.RollbackCancellation(); err != nil {
 		if errors.Is(err, models.ErrInvalidStatusTransition) {
-			s.logger.Info("откат отменён, неверный статус", zap.Int64("id", id))
+			s.logger.Warn("откат отменён, неверный статус",
+				zap.Int64("id", id),
+				zap.String("status", string(booking.Status())),
+			)
 			return nil
 		}
-		return err
+		return fmt.Errorf("откат отмены бронирования %d: %w", id, err)
 	}
 
 	if err := s.repo.Update(ctx, booking); err != nil {

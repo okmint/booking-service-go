@@ -59,9 +59,9 @@ func TestConfirm_FromConfirmed_Error(t *testing.T) {
 
 func TestInitiateCancellation_FromAwaitsConfirmation(t *testing.T) {
 	booking := createTestBooking(t)
-	today := time.Now()
+	now := time.Now()
 
-	err := booking.InitiateCancellation(today)
+	err := booking.InitiateCancellation(now)
 
 	require.NoError(t, err)
 	assert.Equal(t, models.BookingStatusCancellationPending, booking.Status())
@@ -72,15 +72,15 @@ func TestInitiateCancellation_FromAwaitsConfirmation(t *testing.T) {
 
 	sentAt, ok := booking.CancelCommandSentAt()
 	require.True(t, ok, "ожидалось наличие времени отправки")
-	assert.Equal(t, today, sentAt)
+	assert.Equal(t, now, sentAt)
 }
 
 func TestInitiateCancellation_FromConfirmed_FutureStartDate(t *testing.T) {
 	booking := createTestBooking(t)
 	_ = booking.Confirm()
-	today := time.Now()
+	now := time.Now()
 
-	err := booking.InitiateCancellation(today)
+	err := booking.InitiateCancellation(now)
 
 	require.NoError(t, err)
 	assert.Equal(t, models.BookingStatusCancellationPending, booking.Status())
@@ -172,6 +172,24 @@ func TestRollbackCancellation_FromAwaitsConfirmation_Success(t *testing.T) {
 func TestRollbackCancellation_FromInvalidStatus_Error(t *testing.T) {
 	booking := createTestBooking(t)
 	err := booking.RollbackCancellation()
+	assert.ErrorIs(t, err, models.ErrInvalidStatusTransition)
+}
+
+func TestRollbackCancellation_FromCancellationPending_NoPreviousStatus_Error(t *testing.T) {
+	b := models.RestoreBooking(
+		1,
+		models.BookingStatusCancellationPending,
+		1,
+		10,
+		time.Now().AddDate(0, 0, 7),
+		time.Now().AddDate(0, 0, 14),
+		time.Now(),
+		nil,
+		nil,
+	)
+
+	err := b.RollbackCancellation()
+
 	assert.ErrorIs(t, err, models.ErrInvalidStatusTransition)
 }
 
