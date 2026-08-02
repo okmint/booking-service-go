@@ -36,15 +36,29 @@ type Booking struct {
 	cancelCommandSentAt *time.Time
 }
 
-func (b *Booking) ID() int64                       { return b.id }
-func (b *Booking) Status() BookingStatus           { return b.status }
-func (b *Booking) UserID() int64                   { return b.userID }
-func (b *Booking) ResourceID() int64               { return b.resourceID }
-func (b *Booking) StartDate() time.Time            { return b.startDate }
-func (b *Booking) EndDate() time.Time              { return b.endDate }
-func (b *Booking) CreatedAt() time.Time            { return b.createdAt }
-func (b *Booking) PreviousStatus() *BookingStatus  { return b.previousStatus }
-func (b *Booking) CancelCommandSentAt() *time.Time { return b.cancelCommandSentAt }
+func (b *Booking) ID() int64             { return b.id }
+func (b *Booking) Status() BookingStatus { return b.status }
+func (b *Booking) UserID() int64         { return b.userID }
+func (b *Booking) ResourceID() int64     { return b.resourceID }
+func (b *Booking) StartDate() time.Time  { return b.startDate }
+func (b *Booking) EndDate() time.Time    { return b.endDate }
+func (b *Booking) CreatedAt() time.Time  { return b.createdAt }
+
+// PreviousStatus возвращает предыдущий статус и флаг наличия значения.
+func (b *Booking) PreviousStatus() (BookingStatus, bool) {
+	if b.previousStatus == nil {
+		return "", false
+	}
+	return *b.previousStatus, true
+}
+
+// CancelCommandSentAt возвращает время отправки команды на отмену и флаг наличия значения.
+func (b *Booking) CancelCommandSentAt() (time.Time, bool) {
+	if b.cancelCommandSentAt == nil {
+		return time.Time{}, false
+	}
+	return *b.cancelCommandSentAt, true
+}
 
 // NewBooking создаёт новое бронирование в статусе AwaitsConfirmation.
 func NewBooking(userID, resourceID int64, startDate, endDate time.Time) (*Booking, error) {
@@ -98,8 +112,10 @@ func (b *Booking) InitiateCancellation(today time.Time) error {
 	}
 	prev := b.status
 	b.previousStatus = &prev
-	now := time.Now().UTC()
-	b.cancelCommandSentAt = &now
+
+	sentAt := today
+	b.cancelCommandSentAt = &sentAt
+
 	b.status = BookingStatusCancellationPending
 	return nil
 }

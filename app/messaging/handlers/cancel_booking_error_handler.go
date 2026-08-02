@@ -11,13 +11,13 @@ import (
 	"booking-service/app/service"
 )
 
-// CancelBookingErrorHandler обрабатывает ошибки/отклонения отмены бронирования.
+// CancelBookingErrorHandler обрабатывает сообщения из DLQ.
 type CancelBookingErrorHandler struct {
 	service *service.BookingsService
 	logger  *zap.Logger
 }
 
-// NewCancelBookingErrorHandler создаёт новый обработчик ошибок отмены.
+// NewCancelBookingErrorHandler создаёт новый обработчик.
 func NewCancelBookingErrorHandler(svc *service.BookingsService, logger *zap.Logger) *CancelBookingErrorHandler {
 	return &CancelBookingErrorHandler{
 		service: svc,
@@ -25,24 +25,20 @@ func NewCancelBookingErrorHandler(svc *service.BookingsService, logger *zap.Logg
 	}
 }
 
-// Handle обрабатывает событие BookingJobDenied.
+// Handle обрабатывает сообщение из DLQ.
 func (h *CancelBookingErrorHandler) Handle(ctx context.Context, body []byte) error {
-	var event messaging.BookingJobDenied
+	var event messaging.CancelBookingJobCommand
 	if err := json.Unmarshal(body, &event); err != nil {
-		return fmt.Errorf("десериализация BookingJobDenied: %w", err)
+		return fmt.Errorf("десериализация CancelBookingJobCommand: %w", err)
 	}
-	bookingID, err := messaging.RequestIDToBookingID(event.RequestId)
-	if err != nil {
-		return fmt.Errorf("извлечение bookingId из RequestId: %w", err)
-	}
-	h.logger.Warn("получено событие BookingJobDenied, запуск отката",
-		zap.Int64("bookingId", bookingID),
+
+	h.logger.Warn("получено сообщение из DLQ (ошибка отмены), передаем в сервис для отката",
 		zap.String("requestId", event.RequestId),
-		zap.String("reason", event.Reason),
+		zap.String("eventId", event.EventId),
 	)
+
 	if err := h.service.HandleCancelError(ctx, event.RequestId); err != nil {
-		return fmt.Errorf("ошибка отката для бронирования %d: %w", bookingID, err)
+		return fmt.Errorf("ошибка обработки отката для requestId %s: %w", event.RequestId, err)
 	}
-	h.logger.Info("успешный откат", zap.Int64("bookingId", bookingID))
 	return nil
 }

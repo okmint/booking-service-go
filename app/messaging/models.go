@@ -49,8 +49,9 @@ const (
 
 // QueueSuffixes для входящих событий — читаемые имена суффиксов очередей.
 const (
-	QueueSuffixBookingJobConfirmed = "booking-job.confirmed"
-	QueueSuffixBookingJobDenied    = "booking-job.denied"
+	QueueSuffixBookingJobConfirmed   = "booking-job.confirmed"
+	QueueSuffixBookingJobDenied      = "booking-job.denied"
+	QueueSuffixCancelBookingJobError = "cancel-booking-job.error"
 )
 
 // Routing keys и типы для исходящих команд в Catalog (publisher side, Rebus convention).

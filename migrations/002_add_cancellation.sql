@@ -5,5 +5,5 @@ ALTER TABLE bookings
 
 -- +goose Down
 ALTER TABLE bookings
-    DROP COLUMN previous_status,
-    DROP COLUMN cancel_command_sent_at;
+    DROP COLUMN IF EXISTS previous_status,
+    DROP COLUMN IF EXISTS cancel_command_sent_at;

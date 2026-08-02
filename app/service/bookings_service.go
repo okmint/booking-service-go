@@ -68,6 +68,7 @@ func (s *BookingsService) Create(ctx context.Context, req dto.CreateBookingReque
 		EndDate:    req.EndDate,
 	}); err != nil {
 		s.logger.Error("ошибка публикации CreateBookingJob", zap.Error(err), zap.Int64("bookingId", id))
+		// Не возвращаем ошибку -- бронирование уже создано, команда может быть обработана позже
 	}
 
 	return id, nil
@@ -116,6 +117,10 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID st
 
 	booking, err := s.repo.GetByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, models.ErrBookingNotFound) {
+			s.logger.Warn("бронирование не найдено, игнорируем завершение отмены", zap.Int64("id", id))
+			return nil
+		}
 		return fmt.Errorf("получение бронирования: %w", err)
 	}
 
@@ -146,6 +151,10 @@ func (s *BookingsService) HandleCancelError(ctx context.Context, requestID strin
 
 	booking, err := s.repo.GetByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, models.ErrBookingNotFound) {
+			s.logger.Warn("бронирование не найдено, игнорируем откат отмены", zap.Int64("id", id))
+			return nil
+		}
 		return fmt.Errorf("получение бронирования для отката: %w", err)
 	}
 

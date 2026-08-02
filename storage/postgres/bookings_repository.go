@@ -52,10 +52,23 @@ func (r *BookingsRepository) GetByID(ctx context.Context, id int64) (*models.Boo
 	return booking, nil
 }
 
-// Update обновляет статус бронирования.
+// Update обновляет состояние бронирования.
 func (r *BookingsRepository) Update(ctx context.Context, booking *models.Booking) error {
+	var prevStatus *string
+	if ps, ok := booking.PreviousStatus(); ok {
+		s := string(ps)
+		prevStatus = &s
+	}
+
+	var sentAt *time.Time
+	if sa, ok := booking.CancelCommandSentAt(); ok {
+		sentAt = &sa
+	}
+
 	tag, err := r.pool.Exec(ctx, queryUpdateBookingStatus,
 		string(booking.Status()),
+		prevStatus,
+		sentAt,
 		booking.ID(),
 	)
 	if err != nil {
@@ -138,39 +151,55 @@ func (r *BookingsRepository) GetAwaitingConfirmation(ctx context.Context, limit 
 // scanBooking сканирует одну строку в доменный объект Booking.
 func (r *BookingsRepository) scanBooking(row pgx.Row) (*models.Booking, error) {
 	var (
-		id         int64
-		status     string
-		userID     int64
-		resourceID int64
-		startDate  time.Time
-		endDate    time.Time
-		createdAt  time.Time
+		id              int64
+		status          string
+		userID          int64
+		resourceID      int64
+		startDate       time.Time
+		endDate         time.Time
+		createdAt       time.Time
+		prevStatusStr   *string
+		cancelCmdSentAt *time.Time
 	)
 
-	err := row.Scan(&id, &status, &userID, &resourceID, &startDate, &endDate, &createdAt)
+	err := row.Scan(&id, &status, &userID, &resourceID, &startDate, &endDate, &createdAt, &prevStatusStr, &cancelCmdSentAt)
 	if err != nil {
 		return nil, err
 	}
 
-	return models.RestoreBooking(id, models.BookingStatus(status), userID, resourceID, startDate, endDate, createdAt), nil
+	var prevStatus *models.BookingStatus
+	if prevStatusStr != nil {
+		ps := models.BookingStatus(*prevStatusStr)
+		prevStatus = &ps
+	}
+
+	return models.RestoreBooking(id, models.BookingStatus(status), userID, resourceID, startDate, endDate, createdAt, prevStatus, cancelCmdSentAt), nil
 }
 
 // scanBookingFromRows сканирует строку из pgx.Rows.
 func (r *BookingsRepository) scanBookingFromRows(rows pgx.Rows) (*models.Booking, error) {
 	var (
-		id         int64
-		status     string
-		userID     int64
-		resourceID int64
-		startDate  time.Time
-		endDate    time.Time
-		createdAt  time.Time
+		id              int64
+		status          string
+		userID          int64
+		resourceID      int64
+		startDate       time.Time
+		endDate         time.Time
+		createdAt       time.Time
+		prevStatusStr   *string
+		cancelCmdSentAt *time.Time
 	)
 
-	err := rows.Scan(&id, &status, &userID, &resourceID, &startDate, &endDate, &createdAt)
+	err := rows.Scan(&id, &status, &userID, &resourceID, &startDate, &endDate, &createdAt, &prevStatusStr, &cancelCmdSentAt)
 	if err != nil {
 		return nil, err
 	}
 
-	return models.RestoreBooking(id, models.BookingStatus(status), userID, resourceID, startDate, endDate, createdAt), nil
+	var prevStatus *models.BookingStatus
+	if prevStatusStr != nil {
+		ps := models.BookingStatus(*prevStatusStr)
+		prevStatus = &ps
+	}
+
+	return models.RestoreBooking(id, models.BookingStatus(status), userID, resourceID, startDate, endDate, createdAt, prevStatus, cancelCmdSentAt), nil
 }
