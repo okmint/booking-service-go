@@ -54,5 +54,18 @@ type ProblemDetails struct {
 	Detail string `json:"detail,omitempty"`
 }
 
+// BookingStatisticsResponse -- ответ со статистикой бронирований за период.
+type BookingStatisticsResponse struct {
+	TotalCount   int                 `json:"totalCount"`
+	Statuses     map[string]int      `json:"statuses"`
+	TopResources []ResourceStatistic `json:"topResources"`
+}
+
+// ResourceStatistic -- статистика по конкретному ресурсу.
+type ResourceStatistic struct {
+	ResourceID int64 `json:"resourceId"`
+	Count      int   `json:"count"`
+}
+
 // DateFormat -- формат даты для JSON-сериализации.
 const DateFormat = "2006-01-02"
