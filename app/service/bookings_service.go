@@ -179,21 +179,23 @@ func (s *BookingsService) HandleCancelError(ctx context.Context, requestID strin
 }
 
 // Confirm подтверждает бронирование по ID.
-func (s *BookingsService) Confirm(ctx context.Context, id int64) error {
+func (s *BookingsService) Confirm(ctx context.Context, id int64) (bool, error) {
 	booking, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return err
+		return false, err
 	}
 
+	isRaceCondition := booking.Status() == models.BookingStatusCancellationPending
+
 	if err := booking.Confirm(); err != nil {
-		return err
+		return false, err
 	}
 
 	if err := s.repo.Update(ctx, booking); err != nil {
-		return fmt.Errorf("обновление бронирования: %w", err)
+		return false, fmt.Errorf("обновление бронирования: %w", err)
 	}
 
-	s.logger.Info("бронирование подтверждено", zap.Int64("id", id))
+	s.logger.Info("состояние бронирования обновлено", zap.Int64("id", id))
 
-	return nil
+	return isRaceCondition, nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"booking-service/app/worker"
 	"context"
 	"errors"
 	"fmt"
@@ -75,7 +76,6 @@ func main() {
 		cfg.Catalog.RetryBaseDelay,
 		logger,
 	)
-	_ = catalogClient
 
 	// Хендлеры событий RabbitMQ
 	confirmedHandler := handlers.NewBookingConfirmedHandler(bookingsService, logger)
@@ -87,8 +87,31 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Воркер подтверждений
+	confirmationWorker := worker.NewConfirmationWorker(
+		bookingsService,
+		repo,
+		catalogClient,
+		cfg.Worker.ConfirmationInterval,
+		cfg.Worker.ConfirmationBatch,
+		logger,
+	)
+	go confirmationWorker.Run(ctx)
+
+	// Воркер отмен
+	cancellationWorker := worker.NewCancellationWorker(
+		repo,
+		publisher,
+		cfg.Worker.CancellationInterval,
+		cfg.Worker.CancellationTimeout,
+		cfg.Worker.CancellationBatch,
+		logger,
+	)
+	go cancellationWorker.Run(ctx)
+
 	// Consumer
 	consumer := messaging.NewConsumer(mqConn, cfg.RabbitMQ.ExchangeName, cfg.RabbitMQ.QueuePrefix, logger)
+
 	consumer.Subscribe(messaging.QueueSuffixBookingJobConfirmed, messaging.RoutingKeyBookingJobConfirmed, confirmedHandler.Handle)
 	consumer.Subscribe(messaging.QueueSuffixBookingJobDenied, messaging.RoutingKeyBookingJobDenied, deniedHandler.Handle)
 	consumer.Subscribe(messaging.QueueSuffixCancelBookingJobError, messaging.RoutingKeyCancelBookingJobError, cancelErrorHandler.Handle)

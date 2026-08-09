@@ -25,6 +25,9 @@ type BookingRepository interface {
 
 	// GetStatistics возвращает агрегированную статистику бронирований.
 	GetStatistics(ctx context.Context, dateFrom, dateTo time.Time) (BookingStatistics, error)
+
+	// GetStuckCancellations возвращает бронирования, зависшие в статусе отмены дольше заданного таймаута.
+	GetStuckCancellations(ctx context.Context, threshold time.Time, limit int) ([]Booking, error)
 }
 
 // BookingFilter содержит параметры фильтрации и пагинации.

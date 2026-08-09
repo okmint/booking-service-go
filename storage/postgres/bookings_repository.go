@@ -204,6 +204,26 @@ func (r *BookingsRepository) scanBookingFromRows(rows pgx.Rows) (*models.Booking
 	return models.RestoreBooking(id, models.BookingStatus(status), userID, resourceID, startDate, endDate, createdAt, prevStatus, cancelCmdSentAt), nil
 }
 
+// GetStuckCancellations возвращает бронирования, зависшие в статусе отмены дольше заданного таймаута.
+func (r *BookingsRepository) GetStuckCancellations(ctx context.Context, threshold time.Time, limit int) ([]models.Booking, error) {
+	rows, err := r.pool.Query(ctx, queryGetStuckCancellations, threshold, limit)
+	if err != nil {
+		return nil, fmt.Errorf("получение зависших отмен: %w", err)
+	}
+	defer rows.Close()
+
+	var bookings []models.Booking
+	for rows.Next() {
+		booking, err := r.scanBookingFromRows(rows)
+		if err != nil {
+			return nil, fmt.Errorf("сканирование бронирования: %w", err)
+		}
+		bookings = append(bookings, *booking)
+	}
+
+	return bookings, rows.Err()
+}
+
 // GetStatistics возвращает агрегированную аналитику по бронированиям за период.
 func (r *BookingsRepository) GetStatistics(ctx context.Context, dateFrom, dateTo time.Time) (models.BookingStatistics, error) {
 	stats := models.BookingStatistics{
