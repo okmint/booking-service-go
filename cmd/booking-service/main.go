@@ -152,7 +152,6 @@ func setupLogger(level string) *zap.Logger {
 	default:
 		zapLevel = zapcore.InfoLevel
 	}
-
 	cfg := zap.NewProductionConfig()
 	cfg.Level.SetLevel(zapLevel)
 	logger, _ := cfg.Build()
