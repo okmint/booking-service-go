@@ -80,6 +80,8 @@ func main() {
 	// Хендлеры событий RabbitMQ
 	confirmedHandler := handlers.NewBookingConfirmedHandler(bookingsService, logger)
 	deniedHandler := handlers.NewBookingDeniedHandler(bookingsService, logger)
+	cancelErrorHandler := handlers.NewCancelBookingErrorHandler(bookingsService, logger)
+	cancelSuccessHandler := handlers.NewBookingCancelledHandler(bookingsService, logger)
 
 	// Контекст для graceful shutdown фоновых задач
 	ctx, cancel := context.WithCancel(context.Background())
@@ -89,7 +91,8 @@ func main() {
 	consumer := messaging.NewConsumer(mqConn, cfg.RabbitMQ.ExchangeName, cfg.RabbitMQ.QueuePrefix, logger)
 	consumer.Subscribe(messaging.QueueSuffixBookingJobConfirmed, messaging.RoutingKeyBookingJobConfirmed, confirmedHandler.Handle)
 	consumer.Subscribe(messaging.QueueSuffixBookingJobDenied, messaging.RoutingKeyBookingJobDenied, deniedHandler.Handle)
-
+	consumer.Subscribe(messaging.QueueSuffixCancelBookingJobError, messaging.RoutingKeyCancelBookingJobError, cancelErrorHandler.Handle)
+	consumer.Subscribe(messaging.QueueSuffixBookingJobCancelled, messaging.RoutingKeyBookingJobCancelled, cancelSuccessHandler.Handle)
 	if err := consumer.Start(ctx); err != nil {
 		logger.Error("не удалось запустить consumer", zap.Error(err))
 		os.Exit(1)

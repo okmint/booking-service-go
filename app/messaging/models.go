@@ -41,22 +41,32 @@ type BookingJobDenied struct {
 	Reason    string `json:"Reason"`
 }
 
+// BookingJobCancelled -- событие успешной отмены бронирования от Catalog.
+type BookingJobCancelled struct {
+	EventId   string `json:"EventId"`
+	RequestId string `json:"RequestId"`
+}
+
 // Routing keys для входящих событий от Catalog (consumer side, Rebus convention).
 const (
 	RoutingKeyBookingJobConfirmed = "BookingService.Catalog.Async.Api.Contracts.Events.BookingJobConfirmed, BookingService.Catalog.Async.Api.Contracts"
 	RoutingKeyBookingJobDenied    = "BookingService.Catalog.Async.Api.Contracts.Events.BookingJobDenied, BookingService.Catalog.Async.Api.Contracts"
+	RoutingKeyBookingJobCancelled = "BookingService.Catalog.Async.Api.Contracts.Events.BookingJobCancelled, BookingService.Catalog.Async.Api.Contracts"
 )
 
 // QueueSuffixes для входящих событий — читаемые имена суффиксов очередей.
 const (
-	QueueSuffixBookingJobConfirmed = "booking-job.confirmed"
-	QueueSuffixBookingJobDenied    = "booking-job.denied"
+	QueueSuffixBookingJobConfirmed   = "booking-job.confirmed"
+	QueueSuffixBookingJobDenied      = "booking-job.denied"
+	QueueSuffixCancelBookingJobError = "cancel-booking-job.error"
+	QueueSuffixBookingJobCancelled   = "booking-job.cancelled"
 )
 
 // Routing keys и типы для исходящих команд в Catalog (publisher side, Rebus convention).
 const (
-	RoutingKeyCreateBookingJob = "BookingService.Catalog.Async.Api.Contracts.Requests.CreateBookingJobRequest, BookingService.Catalog.Async.Api.Contracts"
-	RoutingKeyCancelBookingJob = "BookingService.Catalog.Async.Api.Contracts.Requests.CancelBookingJobByRequestIdRequest, BookingService.Catalog.Async.Api.Contracts"
+	RoutingKeyCreateBookingJob      = "BookingService.Catalog.Async.Api.Contracts.Requests.CreateBookingJobRequest, BookingService.Catalog.Async.Api.Contracts"
+	RoutingKeyCancelBookingJob      = "BookingService.Catalog.Async.Api.Contracts.Requests.CancelBookingJobByRequestIdRequest, BookingService.Catalog.Async.Api.Contracts"
+	RoutingKeyCancelBookingJobError = "BookingService.Catalog.Async.Api.Contracts.Events.CancelBookingJobError, BookingService.Catalog.Async.Api.Contracts"
 )
 
 // NewMessageID генерирует случайный UUID v4.
