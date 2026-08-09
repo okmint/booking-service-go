@@ -206,8 +206,6 @@ func (r *BookingsRepository) scanBookingFromRows(rows pgx.Rows) (*models.Booking
 
 // GetStatistics возвращает агрегированную аналитику по бронированиям за период.
 func (r *BookingsRepository) GetStatistics(ctx context.Context, dateFrom, dateTo time.Time) (models.BookingStatistics, error) {
-	dateTo = dateTo.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
-
 	stats := models.BookingStatistics{
 		Statuses:     make(map[string]int),
 		TopResources: make([]models.ResourceStatistic, 0, 5),

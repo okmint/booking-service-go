@@ -106,6 +106,17 @@ func (q *BookingsQueries) GetStatistics(ctx context.Context, dateFrom, dateTo ti
 		return dto.BookingStatisticsResponse{}, fmt.Errorf("получение статистики: %w", err)
 	}
 
+	statuses := map[string]int{
+		string(models.BookingStatusAwaitsConfirmation):  0,
+		string(models.BookingStatusConfirmed):           0,
+		string(models.BookingStatusCancellationPending): 0,
+		string(models.BookingStatusCancelled):           0,
+	}
+
+	for status, count := range stats.Statuses {
+		statuses[status] = count
+	}
+
 	topResourcesDTO := make([]dto.ResourceStatistic, 0, len(stats.TopResources))
 	for _, res := range stats.TopResources {
 		topResourcesDTO = append(topResourcesDTO, dto.ResourceStatistic{
@@ -116,7 +127,7 @@ func (q *BookingsQueries) GetStatistics(ctx context.Context, dateFrom, dateTo ti
 
 	return dto.BookingStatisticsResponse{
 		TotalCount:   stats.TotalCount,
-		Statuses:     stats.Statuses,
+		Statuses:     statuses,
 		TopResources: topResourcesDTO,
 	}, nil
 }

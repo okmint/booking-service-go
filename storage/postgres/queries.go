@@ -45,13 +45,13 @@ const (
 	queryGetStatisticsByStatus = `
        SELECT status, COUNT(*)
        FROM bookings
-       WHERE created_at >= $1 AND created_at <= $2
+       WHERE created_at >= $1 AND created_at < ($2::date + INTERVAL '1 day')
        GROUP BY status`
 
 	queryGetStatisticsTopResources = `
        SELECT resource_id, COUNT(*)
        FROM bookings
-       WHERE created_at >= $1 AND created_at <= $2
+       WHERE created_at >= $1 AND created_at < ($2::date + INTERVAL '1 day')
        GROUP BY resource_id
        ORDER BY COUNT(*) DESC
        LIMIT 5`

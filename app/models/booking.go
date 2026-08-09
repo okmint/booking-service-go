@@ -36,19 +36,6 @@ type Booking struct {
 	cancelCommandSentAt *time.Time
 }
 
-// BookingStatistics содержит агрегированную аналитику.
-type BookingStatistics struct {
-	TotalCount   int
-	Statuses     map[string]int
-	TopResources []ResourceStatistic
-}
-
-// ResourceStatistic содержит статистику по конкретному ресурсу.
-type ResourceStatistic struct {
-	ResourceID int64
-	Count      int
-}
-
 func (b *Booking) ID() int64             { return b.id }
 func (b *Booking) Status() BookingStatus { return b.status }
 func (b *Booking) UserID() int64         { return b.userID }

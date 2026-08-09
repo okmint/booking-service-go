@@ -139,13 +139,13 @@ func (h *BookingsHandler) GetStatistics(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	dateFrom, err := time.Parse(time.DateOnly, dateFromStr)
+	dateFrom, err := time.Parse(dto.DateFormat, dateFromStr)
 	if err != nil {
 		writeProblemDetails(w, http.StatusBadRequest, "Ошибка валидации", "Некорректный формат dateFrom (ожидается YYYY-MM-DD)")
 		return
 	}
 
-	dateTo, err := time.Parse(time.DateOnly, dateToStr)
+	dateTo, err := time.Parse(dto.DateFormat, dateToStr)
 	if err != nil {
 		writeProblemDetails(w, http.StatusBadRequest, "Ошибка валидации", "Некорректный формат dateTo (ожидается YYYY-MM-DD)")
 		return
