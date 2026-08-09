@@ -186,6 +186,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
 
+  /api/bookings/statistics:
+    get:
+      summary: Получение статистики бронирований
+      operationId: getBookingStatistics
+      tags:
+        - Bookings
+      parameters:
+        - name: dateFrom
+          in: query
+          required: true
+          description: Начало периода (формат YYYY-MM-DD, включительно)
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          required: true
+          description: Конец периода (формат YYYY-MM-DD, включительно)
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Агрегированная статистика
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingStatisticsResponse"
+        "400":
+          description: Ошибка валидации (отсутствуют параметры или dateTo < dateFrom)
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "500":
+          description: Внутренняя ошибка сервера
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
 components:
   schemas:
     CreateBookingRequest:
@@ -334,3 +375,41 @@ components:
         detail:
           type: string
           example: бронирование не найдено
+
+    BookingStatisticsResponse:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+          format: int64
+          description: Общее количество бронирований за период
+          example: 120
+        statuses:
+          type: object
+          description: Разбивка количества бронирований по статусам
+          additionalProperties:
+            type: integer
+          example:
+            confirmed: 80
+            awaits_confirmation: 20
+            cancellation_pending: 5
+            cancelled: 15
+        topResources:
+          type: array
+          description: Топ-5 самых популярных ресурсов по количеству бронирований
+          items:
+            $ref: "#/components/schemas/ResourceStatistic"
+
+    ResourceStatistic:
+      type: object
+      properties:
+        resourceId:
+          type: integer
+          format: int64
+          description: Идентификатор ресурса
+          example: 10
+        count:
+          type: integer
+          format: int64
+          description: Количество бронирований ресурса
+          example: 45

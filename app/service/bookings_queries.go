@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -96,4 +97,37 @@ func mapBookingToResponse(b *models.Booking) dto.BookingResponse {
 		EndDate:    b.EndDate().Format(dto.DateFormat),
 		CreatedAt:  b.CreatedAt().Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+// GetStatistics возвращает агрегированную аналитику за указанный период.
+func (q *BookingsQueries) GetStatistics(ctx context.Context, dateFrom, dateTo time.Time) (dto.BookingStatisticsResponse, error) {
+	stats, err := q.repo.GetStatistics(ctx, dateFrom, dateTo)
+	if err != nil {
+		return dto.BookingStatisticsResponse{}, fmt.Errorf("получение статистики: %w", err)
+	}
+
+	statuses := map[string]int{
+		string(models.BookingStatusAwaitsConfirmation):  0,
+		string(models.BookingStatusConfirmed):           0,
+		string(models.BookingStatusCancellationPending): 0,
+		string(models.BookingStatusCancelled):           0,
+	}
+
+	for status, count := range stats.Statuses {
+		statuses[status] = count
+	}
+
+	topResourcesDTO := make([]dto.ResourceStatistic, 0, len(stats.TopResources))
+	for _, res := range stats.TopResources {
+		topResourcesDTO = append(topResourcesDTO, dto.ResourceStatistic{
+			ResourceID: res.ResourceID,
+			Count:      res.Count,
+		})
+	}
+
+	return dto.BookingStatisticsResponse{
+		TotalCount:   stats.TotalCount,
+		Statuses:     statuses,
+		TopResources: topResourcesDTO,
+	}, nil
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -25,6 +26,7 @@ type BookingQueries interface {
 	GetByID(ctx context.Context, id int64) (dto.BookingResponse, error)
 	GetByFilter(ctx context.Context, req dto.GetBookingsByFilterRequest) (dto.PagedResponse[dto.BookingResponse], error)
 	GetStatus(ctx context.Context, id int64) (models.BookingStatus, error)
+	GetStatistics(ctx context.Context, dateFrom, dateTo time.Time) (dto.BookingStatisticsResponse, error)
 }
 
 // BookingsHandler содержит обработчики HTTP-запросов для бронирований.
@@ -125,6 +127,42 @@ func (h *BookingsHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, dto.BookingStatusResponse{Status: string(status)})
+}
+
+// GetStatistics обрабатывает GET /api/bookings/statistics.
+func (h *BookingsHandler) GetStatistics(w http.ResponseWriter, r *http.Request) {
+	dateFromStr := r.URL.Query().Get("dateFrom")
+	dateToStr := r.URL.Query().Get("dateTo")
+
+	if dateFromStr == "" || dateToStr == "" {
+		writeProblemDetails(w, http.StatusBadRequest, "Ошибка валидации", "Параметры dateFrom и dateTo обязательны")
+		return
+	}
+
+	dateFrom, err := time.Parse(dto.DateFormat, dateFromStr)
+	if err != nil {
+		writeProblemDetails(w, http.StatusBadRequest, "Ошибка валидации", "Некорректный формат dateFrom (ожидается YYYY-MM-DD)")
+		return
+	}
+
+	dateTo, err := time.Parse(dto.DateFormat, dateToStr)
+	if err != nil {
+		writeProblemDetails(w, http.StatusBadRequest, "Ошибка валидации", "Некорректный формат dateTo (ожидается YYYY-MM-DD)")
+		return
+	}
+
+	if dateTo.Before(dateFrom) {
+		writeProblemDetails(w, http.StatusBadRequest, "Ошибка валидации", "dateTo не может быть раньше dateFrom")
+		return
+	}
+
+	stats, err := h.queries.GetStatistics(r.Context(), dateFrom, dateTo)
+	if err != nil {
+		h.handleServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, stats)
 }
 
 // handleServiceError маппит доменные ошибки на HTTP-ответы.
