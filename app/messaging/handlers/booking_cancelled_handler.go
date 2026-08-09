@@ -36,8 +36,7 @@ func (h *BookingCancelledHandler) Handle(ctx context.Context, body []byte) error
 		zap.String("requestId", event.RequestId),
 		zap.String("eventId", event.EventId),
 	)
-
-	// Вызываем тот самый "мёртвый" метод!
+	// Catalog подтвердил отмену — переводим бронь в cancelled.
 	if err := h.service.CompleteCancellation(ctx, event.RequestId); err != nil {
 		return fmt.Errorf("ошибка завершения отмены для requestId %s: %w", event.RequestId, err)
 	}

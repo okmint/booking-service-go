@@ -126,7 +126,7 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID st
 
 	if err := booking.CompleteCancellation(); err != nil {
 		if errors.Is(err, models.ErrInvalidStatusTransition) {
-			s.logger.Info("завершение отмены проигнорировано", zap.Int64("id", id))
+			s.logger.Warn("завершение отмены проигнорировано", zap.Int64("id", id))
 			return nil
 		}
 		return fmt.Errorf("завершение отмены бронирования %d: %w", id, err)

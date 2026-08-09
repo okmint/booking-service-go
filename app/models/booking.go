@@ -98,11 +98,12 @@ func (b *Booking) Confirm() error {
 // InitiateCancellation запускает отмену бронирования.
 // Заменяет старый метод Cancel.
 // Допустимые переходы:
-//   - AwaitsConfirmation
-//   - Confirmed (только если StartDate > today)
+//   - AwaitsConfirmation -> CancellationPending
+//   - Confirmed -> CancellationPending (только если StartDate > today)
 func (b *Booking) InitiateCancellation(now time.Time) error {
 	switch b.status {
 	case BookingStatusAwaitsConfirmation:
+		// переход разрешён без доп. проверок.
 	case BookingStatusConfirmed:
 		if !b.startDate.After(now) {
 			return ErrCannotCancelPastBooking
