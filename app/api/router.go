@@ -27,9 +27,10 @@ func NewRouter(bookingsHandler *handler.BookingsHandler) chi.Router {
 
 		r.Get("/statistics", bookingsHandler.GetStatistics) // GET api/bookings/statistics
 
-		r.Get("/{id}", bookingsHandler.GetByID)          // GET  api/bookings/{id}
-		r.Put("/{id}/cancel", bookingsHandler.Cancel)    // PUT  api/bookings/{id}/cancel
-		r.Get("/{id}/status", bookingsHandler.GetStatus) // GET  api/bookings/{id}/status
+		r.Get("/{id}", bookingsHandler.GetByID)            // GET  api/bookings/{id}
+		r.Put("/{id}/cancel", bookingsHandler.Cancel)      // PUT  api/bookings/{id}/cancel
+		r.Get("/{id}/status", bookingsHandler.GetStatus)   // GET  api/bookings/{id}/status
+		r.Get("/{id}/history", bookingsHandler.GetHistory) // GET  api/bookings/{id}/history
 	})
 
 	return r

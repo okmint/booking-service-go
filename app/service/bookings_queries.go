@@ -86,6 +86,33 @@ func (q *BookingsQueries) GetByFilter(ctx context.Context, req dto.GetBookingsBy
 	}, nil
 }
 
+// GetHistory возвращает историю статусов бронирования с пагинацией.
+func (q *BookingsQueries) GetHistory(ctx context.Context, id int64, page, size int) (dto.PagedResponse[dto.BookingHistoryResponse], error) {
+	if page <= 0 {
+		page = 1
+	}
+	if size <= 0 {
+		size = 25
+	}
+
+	history, totalCount, err := q.repo.GetHistory(ctx, id, page, size)
+	if err != nil {
+		return dto.PagedResponse[dto.BookingHistoryResponse]{}, fmt.Errorf("получение истории: %w", err)
+	}
+
+	items := make([]dto.BookingHistoryResponse, 0, len(history))
+	for i := range history {
+		items = append(items, mapHistoryToResponse(&history[i]))
+	}
+
+	return dto.PagedResponse[dto.BookingHistoryResponse]{
+		Items:      items,
+		TotalCount: totalCount,
+		Page:       page,
+		Size:       size,
+	}, nil
+}
+
 // mapBookingToResponse конвертирует доменный объект в DTO ответа.
 func mapBookingToResponse(b *models.Booking) dto.BookingResponse {
 	return dto.BookingResponse{
@@ -95,7 +122,26 @@ func mapBookingToResponse(b *models.Booking) dto.BookingResponse {
 		ResourceID: b.ResourceID(),
 		StartDate:  b.StartDate().Format(dto.DateFormat),
 		EndDate:    b.EndDate().Format(dto.DateFormat),
-		CreatedAt:  b.CreatedAt().Format("2006-01-02T15:04:05Z07:00"),
+		CreatedAt:  b.CreatedAt().Format(time.RFC3339),
+	}
+}
+
+// mapHistoryToResponse конвертирует запись истории в DTO ответа.
+func mapHistoryToResponse(h *models.BookingHistoryEntry) dto.BookingHistoryResponse {
+	var prevStatus *string
+	if h.PreviousStatus != nil {
+		s := string(*h.PreviousStatus)
+		prevStatus = &s
+	}
+
+	return dto.BookingHistoryResponse{
+		ID:             h.ID,
+		BookingID:      h.BookingID,
+		PreviousStatus: prevStatus,
+		NewStatus:      string(h.NewStatus),
+		Initiator:      h.Initiator,
+		Reason:         h.Reason,
+		CreatedAt:      h.CreatedAt.Format(time.RFC3339),
 	}
 }
 

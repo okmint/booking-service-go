@@ -67,5 +67,16 @@ type ResourceStatistic struct {
 	Count      int   `json:"count"`
 }
 
+// BookingHistoryResponse описывает одну запись истории в ответе API.
+type BookingHistoryResponse struct {
+	ID             int64   `json:"id"`
+	BookingID      int64   `json:"bookingId"`
+	PreviousStatus *string `json:"previousStatus"`
+	NewStatus      string  `json:"newStatus"`
+	Initiator      string  `json:"initiator"`
+	Reason         string  `json:"reason"`
+	CreatedAt      string  `json:"createdAt"`
+}
+
 // DateFormat -- формат даты для JSON-сериализации.
 const DateFormat = "2006-01-02"

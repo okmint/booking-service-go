@@ -27,6 +27,7 @@ type BookingQueries interface {
 	GetByFilter(ctx context.Context, req dto.GetBookingsByFilterRequest) (dto.PagedResponse[dto.BookingResponse], error)
 	GetStatus(ctx context.Context, id int64) (models.BookingStatus, error)
 	GetStatistics(ctx context.Context, dateFrom, dateTo time.Time) (dto.BookingStatisticsResponse, error)
+	GetHistory(ctx context.Context, id int64, page, size int) (dto.PagedResponse[dto.BookingHistoryResponse], error)
 }
 
 // BookingsHandler содержит обработчики HTTP-запросов для бронирований.
@@ -163,6 +164,26 @@ func (h *BookingsHandler) GetStatistics(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, stats)
+}
+
+// GetHistory обрабатывает GET /api/bookings/{id}/history.
+func (h *BookingsHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r)
+	if err != nil {
+		writeProblemDetails(w, http.StatusBadRequest, "Некорректный ID", err.Error())
+		return
+	}
+
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	size, _ := strconv.Atoi(r.URL.Query().Get("size"))
+
+	history, err := h.queries.GetHistory(r.Context(), id, page, size)
+	if err != nil {
+		h.handleServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, history)
 }
 
 // handleServiceError маппит доменные ошибки на HTTP-ответы.

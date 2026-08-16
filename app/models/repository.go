@@ -5,16 +5,30 @@ import (
 	"time"
 )
 
+// BookingHistoryEntry -- запись лога бронирования.
+type BookingHistoryEntry struct {
+	ID             int64          `json:"id"`
+	BookingID      int64          `json:"bookingId"`
+	PreviousStatus *BookingStatus `json:"previousStatus"`
+	NewStatus      BookingStatus  `json:"newStatus"`
+	Initiator      string         `json:"initiator"`
+	Reason         string         `json:"reason"`
+	CreatedAt      time.Time      `json:"createdAt"`
+}
+
 // BookingRepository -- интерфейс репозитория бронирований.
 type BookingRepository interface {
-	// Create сохраняет новое бронирование и возвращает присвоенный ID.
-	Create(ctx context.Context, booking *Booking) (int64, error)
+	// Create сохраняет новое бронирование и пишет историю в одной транзакции.
+	Create(ctx context.Context, booking *Booking, initiator, reason string) (int64, error)
 
 	// GetByID возвращает бронирование по ID.
 	GetByID(ctx context.Context, id int64) (*Booking, error)
 
-	// Update обновляет бронирование в хранилище.
-	Update(ctx context.Context, booking *Booking) error
+	// Update обновляет бронирование и пишет историю в одной транзакции.
+	Update(ctx context.Context, booking *Booking, initiator, reason string) error
+
+	// GetHistory возвращает историю статусов конкретного бронирования с пагинацией.
+	GetHistory(ctx context.Context, bookingID int64, page, size int) ([]BookingHistoryEntry, int64, error)
 
 	// GetByFilter возвращает список бронирований с пагинацией.
 	GetByFilter(ctx context.Context, filter BookingFilter) ([]Booking, int64, error)
