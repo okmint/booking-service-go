@@ -49,7 +49,8 @@ func (s *BookingsService) Create(ctx context.Context, req dto.CreateBookingReque
 		return 0, err
 	}
 
-	id, err := s.repo.Create(ctx, booking)
+	initiator := fmt.Sprint(req.UserID)
+	id, err := s.repo.Create(ctx, booking, initiator, "создание бронирования")
 	if err != nil {
 		return 0, fmt.Errorf("сохранение бронирования: %w", err)
 	}
@@ -68,19 +69,12 @@ func (s *BookingsService) Create(ctx context.Context, req dto.CreateBookingReque
 		EndDate:    req.EndDate,
 	}); err != nil {
 		s.logger.Error("ошибка публикации CreateBookingJob", zap.Error(err), zap.Int64("bookingId", id))
-		// Не возвращаем ошибку -- бронирование уже создано, команда может быть обработана позже
 	}
 
 	return id, nil
 }
 
 // Cancel инициирует процесс отмены бронирования по ID.
-//
-// Шаги:
-//  1. Загрузка бронирования из БД
-//  2. Перевод в статус cancellation_pending через InitiateCancellation()
-//  3. Сохранение обновлённого состояния
-//  4. Публикация команды в Catalog
 func (s *BookingsService) Cancel(ctx context.Context, id int64) error {
 	booking, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -91,7 +85,8 @@ func (s *BookingsService) Cancel(ctx context.Context, id int64) error {
 		return err
 	}
 
-	if err := s.repo.Update(ctx, booking); err != nil {
+	initiator := fmt.Sprint(booking.UserID())
+	if err := s.repo.Update(ctx, booking, initiator, "инициация отмены"); err != nil {
 		return fmt.Errorf("обновление бронирования: %w", err)
 	}
 
@@ -108,7 +103,6 @@ func (s *BookingsService) Cancel(ctx context.Context, id int64) error {
 }
 
 // CompleteCancellation подтверждает успешную отмену.
-// Вызывается обработчиком успешных событий.
 func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID string) error {
 	id, err := messaging.RequestIDToBookingID(requestID)
 	if err != nil {
@@ -132,7 +126,7 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID st
 		return fmt.Errorf("завершение отмены бронирования %d: %w", id, err)
 	}
 
-	if err := s.repo.Update(ctx, booking); err != nil {
+	if err := s.repo.Update(ctx, booking, "System", "отмена успешно завершена"); err != nil {
 		return fmt.Errorf("сохранение завершённой отмены: %w", err)
 	}
 
@@ -141,8 +135,7 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID st
 	return nil
 }
 
-// HandleCancelError выполняет компенсирующую транзакцию
-// при получении ошибки от Catalog Service или сообщения из DLQ.
+// HandleCancelError выполняет компенсирующую транзакцию.
 func (s *BookingsService) HandleCancelError(ctx context.Context, requestID string) error {
 	id, err := messaging.RequestIDToBookingID(requestID)
 	if err != nil {
@@ -169,7 +162,7 @@ func (s *BookingsService) HandleCancelError(ctx context.Context, requestID strin
 		return fmt.Errorf("откат отмены бронирования %d: %w", id, err)
 	}
 
-	if err := s.repo.Update(ctx, booking); err != nil {
+	if err := s.repo.Update(ctx, booking, "System", "откат отмены"); err != nil {
 		return fmt.Errorf("сохранение отката: %w", err)
 	}
 
@@ -191,7 +184,7 @@ func (s *BookingsService) Confirm(ctx context.Context, id int64) (bool, error) {
 		return false, err
 	}
 
-	if err := s.repo.Update(ctx, booking); err != nil {
+	if err := s.repo.Update(ctx, booking, "System", "подтверждено каталогом"); err != nil {
 		return false, fmt.Errorf("обновление бронирования: %w", err)
 	}
 

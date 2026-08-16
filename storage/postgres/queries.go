@@ -63,4 +63,20 @@ const (
          AND cancel_command_sent_at < $1
        ORDER BY cancel_command_sent_at ASC
        LIMIT $2`
+
+	queryInsertHistory = `
+       INSERT INTO booking_history (booking_id, previous_status, new_status, initiator, reason)
+       VALUES ($1, $2, $3, $4, $5)`
+
+	queryCountHistory = `
+       SELECT COUNT(*) 
+       FROM booking_history 
+       WHERE booking_id = $1`
+
+	queryGetHistory = `
+       SELECT id, booking_id, previous_status, new_status, initiator, reason, created_at
+       FROM booking_history
+       WHERE booking_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`
 )

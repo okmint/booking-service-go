@@ -22,10 +22,18 @@ func NewBookingsRepository(pool *pgxpool.Pool) *BookingsRepository {
 	return &BookingsRepository{pool: pool}
 }
 
-// Create сохраняет новое бронирование.
-func (r *BookingsRepository) Create(ctx context.Context, booking *models.Booking) (int64, error) {
+// Create сохраняет новое бронирование и пишет историю в одной транзакции.
+func (r *BookingsRepository) Create(ctx context.Context, booking *models.Booking, initiator, reason string) (int64, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("начало транзакции: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
 	var id int64
-	err := r.pool.QueryRow(ctx, queryInsertBooking,
+	err = tx.QueryRow(ctx, queryInsertBooking,
 		string(booking.Status()),
 		booking.UserID(),
 		booking.ResourceID(),
@@ -33,10 +41,25 @@ func (r *BookingsRepository) Create(ctx context.Context, booking *models.Booking
 		booking.EndDate(),
 		booking.CreatedAt(),
 	).Scan(&id)
-
 	if err != nil {
 		return 0, fmt.Errorf("создание бронирования: %w", err)
 	}
+
+	_, err = tx.Exec(ctx, queryInsertHistory,
+		id,
+		nil,
+		string(booking.Status()),
+		initiator,
+		reason,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("сохранение истории: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("коммит транзакции: %w", err)
+	}
+
 	return id, nil
 }
 
@@ -52,20 +75,36 @@ func (r *BookingsRepository) GetByID(ctx context.Context, id int64) (*models.Boo
 	return booking, nil
 }
 
-// Update обновляет состояние бронирования.
-func (r *BookingsRepository) Update(ctx context.Context, booking *models.Booking) error {
+// Update обновляет состояние бронирования и пишет лог.
+func (r *BookingsRepository) Update(ctx context.Context, booking *models.Booking, initiator, reason string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("начало транзакции: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	var oldStatus string
+	err = tx.QueryRow(ctx, "SELECT status FROM bookings WHERE id = $1 FOR UPDATE", booking.ID()).Scan(&oldStatus)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.ErrBookingNotFound
+		}
+		return fmt.Errorf("получение старого статуса: %w", err)
+	}
+
 	var prevStatus *string
 	if ps, ok := booking.PreviousStatus(); ok {
 		s := string(ps)
 		prevStatus = &s
 	}
-
 	var sentAt *time.Time
 	if sa, ok := booking.CancelCommandSentAt(); ok {
 		sentAt = &sa
 	}
 
-	tag, err := r.pool.Exec(ctx, queryUpdateBookingStatus,
+	_, err = tx.Exec(ctx, queryUpdateBookingStatus,
 		string(booking.Status()),
 		prevStatus,
 		sentAt,
@@ -74,10 +113,21 @@ func (r *BookingsRepository) Update(ctx context.Context, booking *models.Booking
 	if err != nil {
 		return fmt.Errorf("обновление бронирования id=%d: %w", booking.ID(), err)
 	}
-	if tag.RowsAffected() == 0 {
-		return models.ErrBookingNotFound
+
+	if oldStatus != string(booking.Status()) {
+		_, err = tx.Exec(ctx, queryInsertHistory,
+			booking.ID(),
+			oldStatus,
+			string(booking.Status()),
+			initiator,
+			reason,
+		)
+		if err != nil {
+			return fmt.Errorf("сохранение истории: %w", err)
+		}
 	}
-	return nil
+
+	return tx.Commit(ctx)
 }
 
 // GetByFilter возвращает бронирования с фильтрацией и пагинацией.
@@ -268,4 +318,54 @@ func (r *BookingsRepository) GetStatistics(ctx context.Context, dateFrom, dateTo
 	}
 
 	return stats, nil
+}
+
+// GetHistory возвращает историю статусов конкретного бронирования.
+func (r *BookingsRepository) GetHistory(ctx context.Context, bookingID int64, page, size int) ([]models.BookingHistoryEntry, int64, error) {
+	offset := (page - 1) * size
+
+	var totalCount int64
+	if err := r.pool.QueryRow(ctx, queryCountHistory, bookingID).Scan(&totalCount); err != nil {
+		return nil, 0, fmt.Errorf("подсчет записей истории: %w", err)
+	}
+
+	rows, err := r.pool.Query(ctx, queryGetHistory, bookingID, size, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("получение истории: %w", err)
+	}
+	defer rows.Close()
+
+	var history []models.BookingHistoryEntry
+	for rows.Next() {
+		var entry models.BookingHistoryEntry
+		var prevStatusStr *string
+		var newStatusStr string
+
+		err := rows.Scan(
+			&entry.ID,
+			&entry.BookingID,
+			&prevStatusStr,
+			&newStatusStr,
+			&entry.Initiator,
+			&entry.Reason,
+			&entry.CreatedAt,
+		)
+		if err != nil {
+			return nil, 0, fmt.Errorf("сканирование истории: %w", err)
+		}
+
+		if prevStatusStr != nil {
+			ps := models.BookingStatus(*prevStatusStr)
+			entry.PreviousStatus = &ps
+		}
+		entry.NewStatus = models.BookingStatus(newStatusStr)
+
+		history = append(history, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("итерация по строкам истории: %w", err)
+	}
+
+	return history, totalCount, nil
 }
