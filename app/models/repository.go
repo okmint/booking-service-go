@@ -31,6 +31,9 @@ type BookingRepository interface {
 	// Возвращает ErrEventAlreadyProcessed при попытке обработать дубликат.
 	UpdateWithEvent(ctx context.Context, booking *Booking, initiator, reason, eventID string) error
 
+	// IsProcessed проверяет, было ли уже обработано событие с таким eventID.
+	IsProcessed(ctx context.Context, eventID string) (bool, error)
+
 	// GetHistory возвращает историю статусов конкретного бронирования с пагинацией.
 	GetHistory(ctx context.Context, bookingID int64, page, size int) ([]BookingHistoryEntry, int64, error)
 

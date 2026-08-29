@@ -13,8 +13,6 @@ import (
 	"booking-service/app/models"
 )
 
-var ErrEventAlreadyProcessed = errors.New("событие уже обработано")
-
 // BookingsRepository реализует models.BookingRepository.
 type BookingsRepository struct {
 	pool *pgxpool.Pool
@@ -148,7 +146,7 @@ func (r *BookingsRepository) UpdateWithEvent(ctx context.Context, booking *model
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return ErrEventAlreadyProcessed
+			return models.ErrEventAlreadyProcessed
 		}
 		return fmt.Errorf("фиксация обработанного события: %w", err)
 	}
@@ -196,6 +194,16 @@ func (r *BookingsRepository) UpdateWithEvent(ctx context.Context, booking *model
 	}
 
 	return tx.Commit(ctx)
+}
+
+// IsProcessed проверяет, было ли уже обработано событие с таким eventID.
+func (r *BookingsRepository) IsProcessed(ctx context.Context, eventID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, queryCheckProcessedEvent, eventID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("проверка обработанного события: %w", err)
+	}
+	return exists, nil
 }
 
 // GetByFilter возвращает бронирования с фильтрацией и пагинацией.
