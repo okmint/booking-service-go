@@ -27,6 +27,10 @@ type BookingRepository interface {
 	// Update обновляет бронирование и пишет историю в одной транзакции.
 	Update(ctx context.Context, booking *Booking, initiator, reason string) error
 
+	// UpdateWithEvent обновляет бронирование, пишет историю и фиксирует eventID в одной транзакции.
+	// Возвращает ErrEventAlreadyProcessed при попытке обработать дубликат.
+	UpdateWithEvent(ctx context.Context, booking *Booking, initiator, reason, eventID string) error
+
 	// GetHistory возвращает историю статусов конкретного бронирования с пагинацией.
 	GetHistory(ctx context.Context, bookingID int64, page, size int) ([]BookingHistoryEntry, int64, error)
 

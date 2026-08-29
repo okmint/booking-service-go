@@ -102,8 +102,41 @@ func (s *BookingsService) Cancel(ctx context.Context, id int64) error {
 	return nil
 }
 
-// CompleteCancellation подтверждает успешную отмену.
-func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID string) error {
+// CancelWithEvent инициирует отмену бронирования с защитой идемпотентности.
+func (s *BookingsService) CancelWithEvent(ctx context.Context, id int64, eventID string) error {
+	booking, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := booking.InitiateCancellation(time.Now()); err != nil {
+		return err
+	}
+
+	initiator := "CatalogSystem"
+	err = s.repo.UpdateWithEvent(ctx, booking, initiator, "отказ каталога", eventID)
+	if err != nil {
+		if errors.Is(err, models.ErrEventAlreadyProcessed) {
+			s.logger.Warn("дубликат события проигнорирован", zap.String("event_id", eventID))
+			return nil
+		}
+		return fmt.Errorf("обновление бронирования: %w", err)
+	}
+
+	s.logger.Info("начата отмена бронирования (отказ каталога)", zap.Int64("id", id))
+
+	if err := s.publisher.PublishCancelBookingJob(ctx, messaging.CancelBookingJobCommand{
+		EventId:   messaging.NewMessageID(),
+		RequestId: messaging.BookingIDToRequestID(id),
+	}); err != nil {
+		s.logger.Error("ошибка публикации CancelBookingJob", zap.Error(err), zap.Int64("bookingId", id))
+	}
+
+	return nil
+}
+
+// CompleteCancellation подтверждает успешную отмену с защитой идемпотентности.
+func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID, eventID string) error {
 	id, err := messaging.RequestIDToBookingID(requestID)
 	if err != nil {
 		return fmt.Errorf("некорректный requestID: %w", err)
@@ -126,17 +159,21 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID st
 		return fmt.Errorf("завершение отмены бронирования %d: %w", id, err)
 	}
 
-	if err := s.repo.Update(ctx, booking, "System", "отмена успешно завершена"); err != nil {
+	err = s.repo.UpdateWithEvent(ctx, booking, "System", "отмена успешно завершена", eventID)
+	if err != nil {
+		if errors.Is(err, models.ErrEventAlreadyProcessed) {
+			s.logger.Warn("дубликат события проигнорирован", zap.String("event_id", eventID))
+			return nil
+		}
 		return fmt.Errorf("сохранение завершённой отмены: %w", err)
 	}
 
 	s.logger.Info("бронирование отменено", zap.Int64("id", id))
-
 	return nil
 }
 
-// HandleCancelError выполняет компенсирующую транзакцию.
-func (s *BookingsService) HandleCancelError(ctx context.Context, requestID string) error {
+// HandleCancelError выполняет компенсирующую транзакцию с защитой идемпотентности.
+func (s *BookingsService) HandleCancelError(ctx context.Context, requestID, eventID string) error {
 	id, err := messaging.RequestIDToBookingID(requestID)
 	if err != nil {
 		return fmt.Errorf("невалидный requestID: %w", err)
@@ -153,26 +190,27 @@ func (s *BookingsService) HandleCancelError(ctx context.Context, requestID strin
 
 	if err := booking.RollbackCancellation(); err != nil {
 		if errors.Is(err, models.ErrInvalidStatusTransition) {
-			s.logger.Warn("откат отменён, неверный статус",
-				zap.Int64("id", id),
-				zap.String("status", string(booking.Status())),
-			)
+			s.logger.Warn("откат отменён, неверный статус", zap.Int64("id", id))
 			return nil
 		}
 		return fmt.Errorf("откат отмены бронирования %d: %w", id, err)
 	}
 
-	if err := s.repo.Update(ctx, booking, "System", "откат отмены"); err != nil {
+	err = s.repo.UpdateWithEvent(ctx, booking, "System", "откат отмены", eventID)
+	if err != nil {
+		if errors.Is(err, models.ErrEventAlreadyProcessed) {
+			s.logger.Warn("дубликат события проигнорирован", zap.String("event_id", eventID))
+			return nil
+		}
 		return fmt.Errorf("сохранение отката: %w", err)
 	}
 
 	s.logger.Info("успешный откат", zap.Int64("id", id))
-
 	return nil
 }
 
-// Confirm подтверждает бронирование по ID.
-func (s *BookingsService) Confirm(ctx context.Context, id int64) (bool, error) {
+// Confirm подтверждает бронирование по ID с защитой идемпотентности.
+func (s *BookingsService) Confirm(ctx context.Context, id int64, eventID string) (bool, error) {
 	booking, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return false, err
@@ -184,11 +222,15 @@ func (s *BookingsService) Confirm(ctx context.Context, id int64) (bool, error) {
 		return false, err
 	}
 
-	if err := s.repo.Update(ctx, booking, "System", "подтверждено каталогом"); err != nil {
+	err = s.repo.UpdateWithEvent(ctx, booking, "System", "подтверждено каталогом", eventID)
+	if err != nil {
+		if errors.Is(err, models.ErrEventAlreadyProcessed) {
+			s.logger.Warn("дубликат события проигнорирован", zap.String("event_id", eventID))
+			return false, nil
+		}
 		return false, fmt.Errorf("обновление бронирования: %w", err)
 	}
 
 	s.logger.Info("состояние бронирования обновлено", zap.Int64("id", id))
-
 	return isRaceCondition, nil
 }
