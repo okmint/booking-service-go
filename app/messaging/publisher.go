@@ -15,17 +15,20 @@ type Publisher struct {
 	conn                  *Connection
 	exchangeName          string
 	publisherExchangeName string
+	domainEventsExchange  string
 	logger                *zap.Logger
 }
 
 // NewPublisher создаёт новый Publisher.
 // exchangeName — exchange для получения ответов (consumer side).
 // publisherExchangeName — exchange для отправки команд в Catalog.
-func NewPublisher(conn *Connection, exchangeName, publisherExchangeName string, logger *zap.Logger) *Publisher {
+// domainEventsExchange — exchange для доменных событий.
+func NewPublisher(conn *Connection, exchangeName, publisherExchangeName, domainEventsExchange string, logger *zap.Logger) *Publisher {
 	return &Publisher{
 		conn:                  conn,
 		exchangeName:          exchangeName,
 		publisherExchangeName: publisherExchangeName,
+		domainEventsExchange:  domainEventsExchange,
 		logger:                logger,
 	}
 }
@@ -61,6 +64,39 @@ func (p *Publisher) Publish(ctx context.Context, routingKey string, message any)
 	return nil
 }
 
+// PublishBookingStatusChangedEvent публикует доменное событие об изменении статуса.
+func (p *Publisher) PublishBookingStatusChangedEvent(ctx context.Context, event BookingStatusChangedEvent) error {
+	body, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("сериализация события BookingStatusChangedEvent: %w", err)
+	}
+
+	err = p.conn.Channel().PublishWithContext(
+		ctx,
+		p.domainEventsExchange,
+		RoutingKeyBookingStatusChanged,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType:  "application/json",
+			DeliveryMode: amqp.Persistent,
+			Body:         body,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("публикация доменного события: %w", err)
+	}
+
+	p.logger.Debug("доменное событие опубликовано",
+		zap.String("routingKey", RoutingKeyBookingStatusChanged),
+		zap.String("exchange", p.domainEventsExchange),
+		zap.Int64("bookingId", event.BookingId),
+		zap.String("newStatus", event.NewStatus),
+	)
+
+	return nil
+}
+
 // PublishCreateBookingJob публикует команду на создание задания бронирования.
 func (p *Publisher) PublishCreateBookingJob(ctx context.Context, cmd CreateBookingJobCommand) error {
 	return p.publishToCatalog(ctx, RoutingKeyCreateBookingJob, cmd)
@@ -72,7 +108,6 @@ func (p *Publisher) PublishCancelBookingJob(ctx context.Context, cmd CancelBooki
 }
 
 // publishToCatalog публикует сообщение в Catalog через Rebus-совместимый exchange.
-// Добавляет заголовки, необходимые для Rebus (rbs2-*).
 func (p *Publisher) publishToCatalog(ctx context.Context, routingKey string, message any) error {
 	body, err := json.Marshal(message)
 	if err != nil {

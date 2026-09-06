@@ -31,6 +31,29 @@ func NewBookingsService(repo models.BookingRepository, publisher *messaging.Publ
 	}
 }
 
+// publishDomainEvent формирует и публикует событие изменения статуса.
+func (s *BookingsService) publishDomainEvent(ctx context.Context, id int64, oldStatus, newStatus models.BookingStatus, reason string) {
+	if oldStatus == newStatus {
+		return
+	}
+
+	event := messaging.BookingStatusChangedEvent{
+		EventId:   messaging.NewMessageID(),
+		BookingId: id,
+		OldStatus: string(oldStatus),
+		NewStatus: string(newStatus),
+		Reason:    reason,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if err := s.publisher.PublishBookingStatusChangedEvent(ctx, event); err != nil {
+		s.logger.Error("ошибка публикации доменного события BookingStatusChangedEvent",
+			zap.Error(err),
+			zap.Int64("bookingId", id),
+		)
+	}
+}
+
 // Create создаёт новое бронирование.
 func (s *BookingsService) Create(ctx context.Context, req dto.CreateBookingRequest) (int64, error) {
 	startDate, err := time.Parse(dto.DateFormat, req.StartDate)
@@ -80,14 +103,19 @@ func (s *BookingsService) Cancel(ctx context.Context, id int64) error {
 		return err
 	}
 
+	oldStatus := booking.Status()
+	reason := "инициация отмены"
+
 	if err := booking.InitiateCancellation(time.Now()); err != nil {
 		return err
 	}
 
 	initiator := fmt.Sprint(booking.UserID())
-	if err := s.repo.Update(ctx, booking, initiator, "инициация отмены"); err != nil {
+	if err := s.repo.Update(ctx, booking, initiator, reason); err != nil {
 		return fmt.Errorf("обновление бронирования: %w", err)
 	}
+
+	s.publishDomainEvent(ctx, id, oldStatus, booking.Status(), reason)
 
 	s.logger.Info("начата отмена бронирования", zap.Int64("id", id))
 
@@ -117,12 +145,15 @@ func (s *BookingsService) CancelWithEvent(ctx context.Context, id int64, eventID
 		return err
 	}
 
+	oldStatus := booking.Status()
+	reason := "отказ каталога"
+
 	if err := booking.InitiateCancellation(time.Now()); err != nil {
 		return err
 	}
 
 	initiator := "CatalogSystem"
-	err = s.repo.UpdateWithEvent(ctx, booking, initiator, "отказ каталога", eventID)
+	err = s.repo.UpdateWithEvent(ctx, booking, initiator, reason, eventID)
 	if err != nil {
 		if errors.Is(err, models.ErrEventAlreadyProcessed) {
 			s.logger.Warn("дубликат события проигнорирован при обновлении", zap.String("event_id", eventID))
@@ -130,6 +161,8 @@ func (s *BookingsService) CancelWithEvent(ctx context.Context, id int64, eventID
 		}
 		return fmt.Errorf("обновление бронирования: %w", err)
 	}
+
+	s.publishDomainEvent(ctx, id, oldStatus, booking.Status(), reason)
 
 	s.logger.Info("начата отмена бронирования (отказ каталога)", zap.Int64("id", id))
 
@@ -168,6 +201,9 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID, e
 		return fmt.Errorf("получение бронирования: %w", err)
 	}
 
+	oldStatus := booking.Status()
+	reason := "отмена успешно завершена"
+
 	if err := booking.CompleteCancellation(); err != nil {
 		if errors.Is(err, models.ErrInvalidStatusTransition) {
 			s.logger.Warn("завершение отмены проигнорировано", zap.Int64("id", id))
@@ -176,7 +212,7 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID, e
 		return fmt.Errorf("завершение отмены бронирования %d: %w", id, err)
 	}
 
-	err = s.repo.UpdateWithEvent(ctx, booking, "System", "отмена успешно завершена", eventID)
+	err = s.repo.UpdateWithEvent(ctx, booking, "System", reason, eventID)
 	if err != nil {
 		if errors.Is(err, models.ErrEventAlreadyProcessed) {
 			s.logger.Warn("дубликат события проигнорирован при обновлении", zap.String("event_id", eventID))
@@ -184,6 +220,8 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID, e
 		}
 		return fmt.Errorf("сохранение завершённой отмены: %w", err)
 	}
+
+	s.publishDomainEvent(ctx, id, oldStatus, booking.Status(), reason)
 
 	s.logger.Info("бронирование отменено", zap.Int64("id", id))
 	return nil
@@ -214,6 +252,9 @@ func (s *BookingsService) HandleCancelError(ctx context.Context, requestID, even
 		return fmt.Errorf("получение бронирования для отката: %w", err)
 	}
 
+	oldStatus := booking.Status()
+	reason := "откат отмены"
+
 	if err := booking.RollbackCancellation(); err != nil {
 		if errors.Is(err, models.ErrInvalidStatusTransition) {
 			s.logger.Warn("откат отменён, неверный статус", zap.Int64("id", id))
@@ -222,7 +263,7 @@ func (s *BookingsService) HandleCancelError(ctx context.Context, requestID, even
 		return fmt.Errorf("откат отмены бронирования %d: %w", id, err)
 	}
 
-	err = s.repo.UpdateWithEvent(ctx, booking, "System", "откат отмены", eventID)
+	err = s.repo.UpdateWithEvent(ctx, booking, "System", reason, eventID)
 	if err != nil {
 		if errors.Is(err, models.ErrEventAlreadyProcessed) {
 			s.logger.Warn("дубликат события проигнорирован при обновлении", zap.String("event_id", eventID))
@@ -230,6 +271,8 @@ func (s *BookingsService) HandleCancelError(ctx context.Context, requestID, even
 		}
 		return fmt.Errorf("сохранение отката: %w", err)
 	}
+
+	s.publishDomainEvent(ctx, id, oldStatus, booking.Status(), reason)
 
 	s.logger.Info("успешный откат", zap.Int64("id", id))
 	return nil
@@ -252,12 +295,14 @@ func (s *BookingsService) Confirm(ctx context.Context, id int64, eventID string)
 	}
 
 	isRaceCondition := booking.Status() == models.BookingStatusCancellationPending
+	oldStatus := booking.Status()
+	reason := "подтверждено каталогом"
 
 	if err := booking.Confirm(); err != nil {
 		return false, err
 	}
 
-	err = s.repo.UpdateWithEvent(ctx, booking, "System", "подтверждено каталогом", eventID)
+	err = s.repo.UpdateWithEvent(ctx, booking, "System", reason, eventID)
 	if err != nil {
 		if errors.Is(err, models.ErrEventAlreadyProcessed) {
 			s.logger.Warn("дубликат события проигнорирован при обновлении", zap.String("event_id", eventID))
@@ -265,6 +310,8 @@ func (s *BookingsService) Confirm(ctx context.Context, id int64, eventID string)
 		}
 		return false, fmt.Errorf("обновление бронирования: %w", err)
 	}
+
+	s.publishDomainEvent(ctx, id, oldStatus, booking.Status(), reason)
 
 	s.logger.Info("состояние бронирования обновлено", zap.Int64("id", id))
 	return isRaceCondition, nil
