@@ -96,3 +96,16 @@ func RequestIDToBookingID(requestID string) (int64, error) {
 	}
 	return id, nil
 }
+
+// BookingStatusChangedEvent -- доменное событие изменения статуса бронирования.
+type BookingStatusChangedEvent struct {
+	EventId   string `json:"EventId"`
+	BookingId int64  `json:"BookingId"`
+	OldStatus string `json:"OldStatus"`
+	NewStatus string `json:"NewStatus"`
+	Reason    string `json:"Reason"`
+	Timestamp string `json:"Timestamp"`
+}
+
+// RoutingKeyBookingStatusChanged -- routing key для публикации событий изменения статуса.
+const RoutingKeyBookingStatusChanged = "BookingService.Booking.Events.BookingStatusChangedEvent, BookingService.Booking.Events"
