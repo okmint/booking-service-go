@@ -37,7 +37,7 @@ func (h *CancelBookingErrorHandler) Handle(ctx context.Context, body []byte) err
 		zap.String("eventId", event.EventId),
 	)
 
-	if err := h.service.HandleCancelError(ctx, event.RequestId); err != nil {
+	if err := h.service.HandleCancelError(ctx, event.RequestId, event.EventId); err != nil {
 		return fmt.Errorf("ошибка обработки отката для requestId %s: %w", event.RequestId, err)
 	}
 	return nil

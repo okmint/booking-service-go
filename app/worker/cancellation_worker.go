@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -89,8 +90,10 @@ func (w *CancellationWorker) processBatch(ctx context.Context) {
 
 // processBooking обрабатывает одну отмену, повторно отправляя событие в RabbitMQ.
 func (w *CancellationWorker) processBooking(ctx context.Context, booking *models.Booking) {
+	eventID := fmt.Sprintf("retry-cancel-booking-%d", booking.ID())
+
 	cmd := messaging.CancelBookingJobCommand{
-		EventId:   messaging.NewMessageID(),
+		EventId:   eventID,
 		RequestId: messaging.BookingIDToRequestID(booking.ID()),
 	}
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"booking-service/app/models"
@@ -128,6 +129,81 @@ func (r *BookingsRepository) Update(ctx context.Context, booking *models.Booking
 	}
 
 	return tx.Commit(ctx)
+}
+
+// UpdateWithEvent обновляет состояние бронирования, пишет лог и фиксирует eventID в одной транзакции.
+// Если eventID уже существует, возвращает ErrEventAlreadyProcessed.
+func (r *BookingsRepository) UpdateWithEvent(ctx context.Context, booking *models.Booking, initiator, reason, eventID string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("начало транзакции: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	_, err = tx.Exec(ctx, queryInsertProcessedEvent, eventID)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return models.ErrEventAlreadyProcessed
+		}
+		return fmt.Errorf("фиксация обработанного события: %w", err)
+	}
+
+	var oldStatus string
+	err = tx.QueryRow(ctx, "SELECT status FROM bookings WHERE id = $1 FOR UPDATE", booking.ID()).Scan(&oldStatus)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.ErrBookingNotFound
+		}
+		return fmt.Errorf("получение старого статуса: %w", err)
+	}
+
+	var prevStatus *string
+	if ps, ok := booking.PreviousStatus(); ok {
+		s := string(ps)
+		prevStatus = &s
+	}
+	var sentAt *time.Time
+	if sa, ok := booking.CancelCommandSentAt(); ok {
+		sentAt = &sa
+	}
+
+	_, err = tx.Exec(ctx, queryUpdateBookingStatus,
+		string(booking.Status()),
+		prevStatus,
+		sentAt,
+		booking.ID(),
+	)
+	if err != nil {
+		return fmt.Errorf("обновление бронирования id=%d: %w", booking.ID(), err)
+	}
+
+	if oldStatus != string(booking.Status()) {
+		_, err = tx.Exec(ctx, queryInsertHistory,
+			booking.ID(),
+			oldStatus,
+			string(booking.Status()),
+			initiator,
+			reason,
+		)
+		if err != nil {
+			return fmt.Errorf("сохранение истории: %w", err)
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+// IsProcessed проверяет, было ли уже обработано событие с таким eventID.
+func (r *BookingsRepository) IsProcessed(ctx context.Context, eventID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, queryCheckProcessedEvent, eventID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("проверка обработанного события: %w", err)
+	}
+	return exists, nil
 }
 
 // GetByFilter возвращает бронирования с фильтрацией и пагинацией.

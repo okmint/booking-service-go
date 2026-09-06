@@ -10,4 +10,5 @@ var (
 	ErrInvalidDateRange        = errors.New("некорректный диапазон дат")
 	ErrEndDateBeforeStartDate  = errors.New("дата окончания раньше даты начала")
 	ErrBookingNotFound         = errors.New("бронирование не найдено")
+	ErrEventAlreadyProcessed   = errors.New("событие уже обработано")
 )

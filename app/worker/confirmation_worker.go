@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -101,14 +102,16 @@ func (w *ConfirmationWorker) processBooking(ctx context.Context, booking *models
 
 	switch job.Status {
 	case "confirmed":
-		if _, err := w.service.Confirm(ctx, bookingID); err != nil {
+		eventID := fmt.Sprintf("poll-confirm-booking-%d", bookingID)
+		if _, err := w.service.Confirm(ctx, bookingID, eventID); err != nil {
 			logger.Error("ошибка подтверждения бронирования", zap.Error(err))
 			return
 		}
 		logger.Info("бронирование подтверждено через polling")
 
 	case "denied":
-		if err := w.service.Cancel(ctx, bookingID); err != nil {
+		eventID := fmt.Sprintf("poll-deny-booking-%d", bookingID)
+		if err := w.service.CancelWithEvent(ctx, bookingID, eventID); err != nil {
 			logger.Error("ошибка отмены бронирования", zap.Error(err))
 			return
 		}

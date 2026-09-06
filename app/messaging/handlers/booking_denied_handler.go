@@ -41,9 +41,10 @@ func (h *BookingDeniedHandler) Handle(ctx context.Context, body []byte) error {
 		zap.Int64("bookingId", bookingID),
 		zap.Int64("catalogJobId", event.Id),
 		zap.String("reason", event.Reason),
+		zap.String("eventId", event.EventId),
 	)
 
-	if err := h.service.Cancel(ctx, bookingID); err != nil {
+	if err := h.service.CancelWithEvent(ctx, bookingID, event.EventId); err != nil {
 		return fmt.Errorf("отмена бронирования %d: %w", bookingID, err)
 	}
 
