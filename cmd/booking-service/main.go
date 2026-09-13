@@ -127,6 +127,17 @@ func main() {
 	)
 	go cancellationWorker.Run(ctx)
 
+	// Воркер Outbox
+	outboxWorker := worker.NewOutboxWorker(
+		repo,
+		publisher,
+		cfg.Worker.OutboxInterval,
+		cfg.Worker.OutboxBatch,
+		cfg.Worker.OutboxMaxRetries,
+		logger,
+	)
+	go outboxWorker.Run(ctx)
+
 	// Consumer
 	consumer := messaging.NewConsumer(mqConn, cfg.RabbitMQ.ExchangeName, cfg.RabbitMQ.QueuePrefix, logger)
 

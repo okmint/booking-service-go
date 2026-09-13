@@ -49,6 +49,9 @@ type WorkerConfig struct {
 	CancellationInterval time.Duration `envconfig:"WORKER_CANCELLATION_INTERVAL" default:"30s"`
 	CancellationTimeout  time.Duration `envconfig:"WORKER_CANCELLATION_TIMEOUT" default:"5m"`
 	CancellationBatch    int           `envconfig:"WORKER_CANCELLATION_BATCH" default:"10"`
+	OutboxInterval       time.Duration `envconfig:"WORKER_OUTBOX_INTERVAL" default:"2s"`
+	OutboxBatch          int           `envconfig:"WORKER_OUTBOX_BATCH" default:"50"`
+	OutboxMaxRetries     int           `envconfig:"WORKER_OUTBOX_MAX_RETRIES" default:"5"`
 }
 
 type RabbitMQConfig struct {

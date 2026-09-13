@@ -86,4 +86,21 @@ const (
 
 	queryCheckProcessedEvent = `
        SELECT EXISTS(SELECT 1 FROM processed_events WHERE event_id = $1)`
+
+	queryInsertOutboxMessage = `
+       INSERT INTO outbox_messages (event_type, payload)
+       VALUES ($1, $2)`
+
+	queryGetPendingOutboxMessages = `
+       SELECT id, event_type, payload, status, retry_count, created_at
+       FROM outbox_messages
+       WHERE status = 'pending'
+       ORDER BY created_at ASC
+       LIMIT $1
+       FOR UPDATE SKIP LOCKED`
+
+	queryUpdateOutboxMessage = `
+       UPDATE outbox_messages
+       SET status = $1, retry_count = $2, processed_at = $3
+       WHERE id = $4`
 )
