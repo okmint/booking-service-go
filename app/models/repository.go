@@ -24,12 +24,12 @@ type BookingRepository interface {
 	// GetByID возвращает бронирование по ID.
 	GetByID(ctx context.Context, id int64) (*Booking, error)
 
-	// Update обновляет бронирование и пишет историю в одной транзакции.
-	Update(ctx context.Context, booking *Booking, initiator, reason string) error
+	// Update обновляет бронирование, пишет историю и сохраняет событие в outbox в одной транзакции.
+	Update(ctx context.Context, booking *Booking, initiator, reason string, outboxPayload []byte) error
 
-	// UpdateWithEvent обновляет бронирование, пишет историю и фиксирует eventID в одной транзакции.
+	// UpdateWithEvent обновляет бронирование, пишет историю, фиксирует eventID и пишет в outbox в одной транзакции.
 	// Возвращает ErrEventAlreadyProcessed при попытке обработать дубликат.
-	UpdateWithEvent(ctx context.Context, booking *Booking, initiator, reason, eventID string) error
+	UpdateWithEvent(ctx context.Context, booking *Booking, initiator, reason, eventID string, outboxPayload []byte) error
 
 	// IsProcessed проверяет, было ли уже обработано событие с таким eventID.
 	IsProcessed(ctx context.Context, eventID string) (bool, error)
@@ -49,6 +49,12 @@ type BookingRepository interface {
 
 	// GetStuckCancellations возвращает бронирования, зависшие в статусе отмены дольше заданного таймаута.
 	GetStuckCancellations(ctx context.Context, threshold time.Time, limit int) ([]Booking, error)
+
+	// GetPendingOutboxMessages возвращает батч необработанных сообщений из outbox.
+	GetPendingOutboxMessages(ctx context.Context, limit int) ([]OutboxMessage, error)
+
+	// UpdateOutboxMessage обновляет статус сообщения в outbox.
+	UpdateOutboxMessage(ctx context.Context, id int64, status string, retryCount int, processedAt *time.Time) error
 }
 
 // BookingFilter содержит параметры фильтрации и пагинации.

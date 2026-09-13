@@ -76,8 +76,8 @@ func (r *BookingsRepository) GetByID(ctx context.Context, id int64) (*models.Boo
 	return booking, nil
 }
 
-// Update обновляет состояние бронирования и пишет лог.
-func (r *BookingsRepository) Update(ctx context.Context, booking *models.Booking, initiator, reason string) error {
+// Update обновляет состояние бронирования, пишет лог и опционально сохраняет событие в outbox.
+func (r *BookingsRepository) Update(ctx context.Context, booking *models.Booking, initiator, reason string, outboxPayload []byte) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("начало транзакции: %w", err)
@@ -128,12 +128,19 @@ func (r *BookingsRepository) Update(ctx context.Context, booking *models.Booking
 		}
 	}
 
+	if len(outboxPayload) > 0 {
+		_, err = tx.Exec(ctx, queryInsertOutboxMessage, "BookingStatusChangedEvent", outboxPayload)
+		if err != nil {
+			return fmt.Errorf("сохранение в outbox: %w", err)
+		}
+	}
+
 	return tx.Commit(ctx)
 }
 
-// UpdateWithEvent обновляет состояние бронирования, пишет лог и фиксирует eventID в одной транзакции.
+// UpdateWithEvent обновляет состояние бронирования, пишет лог, фиксирует eventID и пишет в outbox.
 // Если eventID уже существует, возвращает ErrEventAlreadyProcessed.
-func (r *BookingsRepository) UpdateWithEvent(ctx context.Context, booking *models.Booking, initiator, reason, eventID string) error {
+func (r *BookingsRepository) UpdateWithEvent(ctx context.Context, booking *models.Booking, initiator, reason, eventID string, outboxPayload []byte) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("начало транзакции: %w", err)
@@ -190,6 +197,13 @@ func (r *BookingsRepository) UpdateWithEvent(ctx context.Context, booking *model
 		)
 		if err != nil {
 			return fmt.Errorf("сохранение истории: %w", err)
+		}
+	}
+
+	if len(outboxPayload) > 0 {
+		_, err = tx.Exec(ctx, queryInsertOutboxMessage, "BookingStatusChangedEvent", outboxPayload)
+		if err != nil {
+			return fmt.Errorf("сохранение в outbox: %w", err)
 		}
 	}
 
@@ -444,4 +458,37 @@ func (r *BookingsRepository) GetHistory(ctx context.Context, bookingID int64, pa
 	}
 
 	return history, totalCount, nil
+}
+
+// GetPendingOutboxMessages возвращает батч необработанных сообщений с блокировкой строк.
+func (r *BookingsRepository) GetPendingOutboxMessages(ctx context.Context, limit int) ([]models.OutboxMessage, error) {
+	rows, err := r.pool.Query(ctx, queryGetPendingOutboxMessages, limit)
+	if err != nil {
+		return nil, fmt.Errorf("получение сообщений из outbox: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []models.OutboxMessage
+	for rows.Next() {
+		var msg models.OutboxMessage
+		if err := rows.Scan(&msg.ID, &msg.EventType, &msg.Payload, &msg.Status, &msg.RetryCount, &msg.CreatedAt); err != nil {
+			return nil, fmt.Errorf("сканирование сообщения outbox: %w", err)
+		}
+		messages = append(messages, msg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("итерация по сообщениям outbox: %w", err)
+	}
+
+	return messages, nil
+}
+
+// UpdateOutboxMessage обновляет статус и счетчик попыток сообщения в outbox.
+func (r *BookingsRepository) UpdateOutboxMessage(ctx context.Context, id int64, status string, retryCount int, processedAt *time.Time) error {
+	_, err := r.pool.Exec(ctx, queryUpdateOutboxMessage, status, retryCount, processedAt, id)
+	if err != nil {
+		return fmt.Errorf("обновление сообщения outbox (id=%d): %w", id, err)
+	}
+	return nil
 }
