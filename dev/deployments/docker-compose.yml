@@ -85,6 +85,8 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+      notification-mock:
+        condition: service_started
 
   booking-db:
     image: postgres:16-alpine
