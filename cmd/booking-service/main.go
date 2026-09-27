@@ -17,6 +17,7 @@ import (
 	"booking-service/app/api"
 	"booking-service/app/api/handler"
 	"booking-service/app/clients/catalog"
+	"booking-service/app/clients/notifications"
 	"booking-service/app/config"
 	"booking-service/app/messaging"
 	"booking-service/app/messaging/handlers"
@@ -82,10 +83,6 @@ func main() {
 	// Инициализация Publisher
 	publisher := messaging.NewPublisher(mqConn, cfg.RabbitMQ.ExchangeName, cfg.RabbitMQ.PublisherExchangeName, cfg.RabbitMQ.DomainEventsExchange, logger)
 
-	// Сервисный слой
-	bookingsService := service.NewBookingsService(repo, publisher, logger)
-	bookingsQueries := service.NewBookingsQueries(repo, logger)
-
 	// Catalog-клиент
 	catalogClient := catalog.NewClient(
 		cfg.Catalog.BaseURL,
@@ -94,6 +91,18 @@ func main() {
 		cfg.Catalog.RetryBaseDelay,
 		logger,
 	)
+
+	notificationClient := notifications.NewClient(
+		cfg.Notification.BaseURL,
+		cfg.Notification.Timeout,
+		cfg.Notification.MaxRetries,
+		cfg.Notification.RetryBaseDelay,
+		logger,
+	)
+
+	// Сервисный слой
+	bookingsService := service.NewBookingsService(repo, publisher, notificationClient, logger)
+	bookingsQueries := service.NewBookingsQueries(repo, logger)
 
 	// Хендлеры событий RabbitMQ
 	confirmedHandler := handlers.NewBookingConfirmedHandler(bookingsService, logger)
