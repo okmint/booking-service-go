@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"booking-service/app/api/dto"
+	"booking-service/app/clients/notifications"
 	"booking-service/app/messaging"
 	"booking-service/app/models"
 )
@@ -19,17 +20,19 @@ import (
 // Этот сервис -- оркестратор: он координирует домен и репозиторий,
 // но НЕ содержит бизнес-правила (они в models.Booking).
 type BookingsService struct {
-	repo      models.BookingRepository
-	publisher *messaging.Publisher
-	logger    *zap.Logger
+	repo               models.BookingRepository
+	publisher          *messaging.Publisher
+	notificationClient *notifications.Client
+	logger             *zap.Logger
 }
 
 // NewBookingsService создаёт новый BookingsService.
-func NewBookingsService(repo models.BookingRepository, publisher *messaging.Publisher, logger *zap.Logger) *BookingsService {
+func NewBookingsService(repo models.BookingRepository, publisher *messaging.Publisher, notifClient *notifications.Client, logger *zap.Logger) *BookingsService {
 	return &BookingsService{
-		repo:      repo,
-		publisher: publisher,
-		logger:    logger,
+		repo:               repo,
+		publisher:          publisher,
+		notificationClient: notifClient,
+		logger:             logger,
 	}
 }
 
@@ -49,6 +52,18 @@ func (s *BookingsService) buildDomainEventPayload(id int64, oldStatus, newStatus
 	}
 
 	return json.Marshal(event)
+}
+
+// notifyStatusChange отправляет уведомление о смене статуса.
+// Метод не возвращает ошибку, так как graceful degradation реализован внутри клиента.
+func (s *BookingsService) notifyStatusChange(ctx context.Context, id int64, newStatus models.BookingStatus) {
+	req := notifications.NotificationRequest{
+		BookingID: id,
+		Status:    string(newStatus),
+		Message:   fmt.Sprintf("Статус вашего бронирования изменён на: %s", newStatus),
+	}
+
+	_ = s.notificationClient.SendNotification(ctx, req)
 }
 
 // Create создаёт новое бронирование.
@@ -167,6 +182,8 @@ func (s *BookingsService) CancelWithEvent(ctx context.Context, id int64, eventID
 		return fmt.Errorf("обновление бронирования: %w", err)
 	}
 
+	s.notifyStatusChange(ctx, id, booking.Status())
+
 	s.logger.Info("начата отмена бронирования (отказ каталога)", zap.Int64("id", id))
 
 	if err := s.publisher.PublishCancelBookingJob(ctx, messaging.CancelBookingJobCommand{
@@ -228,6 +245,8 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID, e
 		}
 		return fmt.Errorf("сохранение завершённой отмены: %w", err)
 	}
+
+	s.notifyStatusChange(ctx, id, booking.Status())
 
 	s.logger.Info("бронирование отменено", zap.Int64("id", id))
 	return nil
@@ -324,6 +343,8 @@ func (s *BookingsService) Confirm(ctx context.Context, id int64, eventID string)
 		}
 		return false, fmt.Errorf("обновление бронирования: %w", err)
 	}
+
+	s.notifyStatusChange(ctx, id, booking.Status())
 
 	s.logger.Info("состояние бронирования обновлено", zap.Int64("id", id))
 	return isRaceCondition, nil
