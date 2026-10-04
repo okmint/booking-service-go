@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/patrickmn/go-cache"
 	"go.uber.org/zap"
 
 	"booking-service/app/api/dto"
@@ -23,15 +24,17 @@ type BookingsService struct {
 	repo               models.BookingRepository
 	publisher          *messaging.Publisher
 	notificationClient *notifications.Client
+	statsCache         *cache.Cache
 	logger             *zap.Logger
 }
 
 // NewBookingsService создаёт новый BookingsService.
-func NewBookingsService(repo models.BookingRepository, publisher *messaging.Publisher, notifClient *notifications.Client, logger *zap.Logger) *BookingsService {
+func NewBookingsService(repo models.BookingRepository, publisher *messaging.Publisher, notifClient *notifications.Client, statsCache *cache.Cache, logger *zap.Logger) *BookingsService {
 	return &BookingsService{
 		repo:               repo,
 		publisher:          publisher,
 		notificationClient: notifClient,
+		statsCache:         statsCache,
 		logger:             logger,
 	}
 }
@@ -107,6 +110,8 @@ func (s *BookingsService) Create(ctx context.Context, req dto.CreateBookingReque
 		s.logger.Error("ошибка публикации CreateBookingJob", zap.Error(err), zap.Int64("bookingId", id))
 	}
 
+	s.statsCache.Flush()
+
 	return id, nil
 }
 
@@ -144,6 +149,8 @@ func (s *BookingsService) Cancel(ctx context.Context, id int64) error {
 	}); err != nil {
 		s.logger.Error("ошибка публикации CancelBookingJob", zap.Error(err), zap.Int64("bookingId", id))
 	}
+
+	s.statsCache.Flush()
 
 	return nil
 }
@@ -196,6 +203,8 @@ func (s *BookingsService) CancelWithEvent(ctx context.Context, id int64, eventID
 	}); err != nil {
 		s.logger.Error("ошибка публикации CancelBookingJob", zap.Error(err), zap.Int64("bookingId", id))
 	}
+
+	s.statsCache.Flush()
 
 	return nil
 }
@@ -251,6 +260,9 @@ func (s *BookingsService) CompleteCancellation(ctx context.Context, requestID, e
 	}
 
 	s.logger.Info("бронирование отменено", zap.Int64("id", id))
+
+	s.statsCache.Flush()
+
 	return nil
 }
 
@@ -305,6 +317,9 @@ func (s *BookingsService) HandleCancelError(ctx context.Context, requestID, even
 	}
 
 	s.logger.Info("успешный откат", zap.Int64("id", id))
+
+	s.statsCache.Flush()
+
 	return nil
 }
 
@@ -349,5 +364,8 @@ func (s *BookingsService) Confirm(ctx context.Context, id int64, eventID string)
 	s.notifyStatusChange(ctx, id, booking.UserID(), "BookingConfirmed", "Ваше бронирование успешно подтверждено")
 
 	s.logger.Info("состояние бронирования обновлено", zap.Int64("id", id))
+
+	s.statsCache.Flush()
+
 	return isRaceCondition, nil
 }
