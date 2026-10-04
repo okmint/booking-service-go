@@ -5,23 +5,26 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
-
 	"booking-service/app/api/dto"
 	"booking-service/app/models"
+
+	"github.com/patrickmn/go-cache"
+	"go.uber.org/zap"
 )
 
 // BookingsQueries обрабатывает запросы (чтение данных) для бронирований.
 type BookingsQueries struct {
-	repo   models.BookingRepository
-	logger *zap.Logger
+	repo       models.BookingRepository
+	statsCache *cache.Cache
+	logger     *zap.Logger
 }
 
 // NewBookingsQueries создаёт новый BookingsQueries.
-func NewBookingsQueries(repo models.BookingRepository, logger *zap.Logger) *BookingsQueries {
+func NewBookingsQueries(repo models.BookingRepository, statsCache *cache.Cache, logger *zap.Logger) *BookingsQueries {
 	return &BookingsQueries{
-		repo:   repo,
-		logger: logger,
+		repo:       repo,
+		statsCache: statsCache,
+		logger:     logger,
 	}
 }
 
@@ -147,6 +150,13 @@ func mapHistoryToResponse(h *models.BookingHistoryEntry) dto.BookingHistoryRespo
 
 // GetStatistics возвращает агрегированную аналитику за указанный период.
 func (q *BookingsQueries) GetStatistics(ctx context.Context, dateFrom, dateTo time.Time) (dto.BookingStatisticsResponse, error) {
+	cacheKey := fmt.Sprintf("stats_%s_%s", dateFrom.Format(time.RFC3339), dateTo.Format(time.RFC3339))
+
+	if cachedData, found := q.statsCache.Get(cacheKey); found {
+		q.logger.Debug("статистика получена из кэша", zap.String("key", cacheKey))
+		return cachedData.(dto.BookingStatisticsResponse), nil
+	}
+
 	stats, err := q.repo.GetStatistics(ctx, dateFrom, dateTo)
 	if err != nil {
 		return dto.BookingStatisticsResponse{}, fmt.Errorf("получение статистики: %w", err)
@@ -171,9 +181,14 @@ func (q *BookingsQueries) GetStatistics(ctx context.Context, dateFrom, dateTo ti
 		})
 	}
 
-	return dto.BookingStatisticsResponse{
+	response := dto.BookingStatisticsResponse{
 		TotalCount:   stats.TotalCount,
 		Statuses:     statuses,
 		TopResources: topResourcesDTO,
-	}, nil
+	}
+
+	q.statsCache.Set(cacheKey, response, cache.DefaultExpiration)
+	q.logger.Debug("статистика сохранена в кэш", zap.String("key", cacheKey))
+
+	return response, nil
 }

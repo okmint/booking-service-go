@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/patrickmn/go-cache"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -100,9 +101,12 @@ func main() {
 		logger,
 	)
 
+	// Инициализация кэша
+	statsCache := cache.New(cfg.Cache.TTL, cfg.Cache.CleanupInterval)
+
 	// Сервисный слой
-	bookingsService := service.NewBookingsService(repo, publisher, notificationClient, logger)
-	bookingsQueries := service.NewBookingsQueries(repo, logger)
+	bookingsService := service.NewBookingsService(repo, publisher, notificationClient, statsCache, logger)
+	bookingsQueries := service.NewBookingsQueries(repo, statsCache, logger)
 
 	// Хендлеры событий RabbitMQ
 	confirmedHandler := handlers.NewBookingConfirmedHandler(bookingsService, logger)
